@@ -9,6 +9,7 @@ class Convert extends Command
 {
     protected $converters = [
         Converters\LanguageConverter::class,
+        Converters\CountryConverter::class,
     ];
 
     /**
