@@ -2,11 +2,15 @@
 
 namespace App\Converters;
 
+use App\Converters\Models\Country;
+
 class CountryConverter extends Converter
 {
     public $xmlRoot = 'countries';
 
     public $convertFrom = 'array.json';
+
+    public $model = Country::class;
 
     public $files = [
         [

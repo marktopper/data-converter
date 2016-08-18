@@ -2,150 +2,49 @@
 
 namespace App\Converters;
 
-use Illuminate\Support\Collection;
+use App\Converters\FileTypes;
 
-abstract class Converter implements ConverterInterface
+abstract class Converter implements ConverterInterface,
+    FileTypes\PhpFileInterface,
+    FileTypes\JsonFileInterface,
+    FileTypes\XmlFileInterface
 {
-    public $xmlRoot = 'data';
+    use FileTypes\PhpFiles,
+        FileTypes\JsonFiles,
+        FileTypes\XmlFiles;
 
-    public $convertFrom = 'array.php';
+    /**
+     * The file to convert from.
+     *
+     * @var string
+     */
+    protected $convertFrom = 'array.php';
 
+    /**
+     * An array of files to convert.
+     *
+     * @var array
+     */
     protected $files = [];
 
+    /**
+     * Class name of model.
+     *
+     * @var string
+     */
+    protected $model;
+
+    /**
+     * Handle the conversion.
+     */
     public function handle()
-    {
-        $data = $this->getFromData();
-
-        foreach ($this->files as $file) {
-            $method = $this->getFileConvertToMethod($file);
-
-            $indexing = $this->getFileIndexing($file);
-
-            $convertedData = $this->$method(
-                !is_null($indexing) ? $this->indexBy($data, $indexing) : $data
-            );
-
-            file_put_contents($this->getFilePath($file), $convertedData);
-
-            if (array_get($file, 'prettify', false)) {
-                $this->prettify($file);
-            }
-        }
-    }
-
-    protected function getFileIndexing($file)
-    {
-        return array_get($file, 'index', null);
-    }
-
-    protected function indexBy(Collection $collection, $index)
-    {
-        return $collection->keyBy($index);
-    }
-
-    protected function prettify(array $file)
-    {
-        $method = $this->getFilePrettifyMethod($file);
-
-        $this->$method($file);
-    }
-
-    protected function prettifyPhp(array $file)
-    {
-        $path = $this->getFilePath($file);
-
-        // Style-fix PHP file
-        exec('php-cs-fixer fix '.$path);
-    }
-
-    protected function prettifyJson(array $file)
-    {
-        $path = $this->getFilePath($file);
-
-        $content = $this->getFileContent($path);
-
-        $content = prettify_json($content);
-
-        file_put_contents($path, $content);
-    }
-
-    protected function prettifyXml(array $file)
-    {
-        $path = $this->getFilePath($file);
-
-        $content = $this->getFileContent($path);
-
-        $dom = new \DOMDocument();
-        $dom->preserveWhiteSpace = FALSE;
-        $dom->loadXML($content);
-        $dom->formatOutput = TRUE;
-
-        $content = $dom->saveXml();
-
-        file_put_contents($path, $content);
-    }
-
-    protected function getFilePrettifyMethod(array $file)
-    {
-        $method = array_get($file, 'prettify_method');
-
-        if (is_null($method)) {
-            $type = collect(explode('.', array_get($file, 'filename')))->last();
-            $method = 'prettify' . studly_case($type);
-        }
-
-        return $method;
-    }
-
-    protected function getFileConvertToMethod(array $file)
-    {
-        $method = array_get($file, 'to_method');
-
-        if (is_null($method)) {
-            $type = collect(explode('.', array_get($file, 'filename')))->last();
-            $method = 'to' . studly_case($type);
-        }
-
-        return $method;
-    }
-
-    public function getFilePath(array $file)
-    {
-        $path = array_get($file, 'filename');
-
-        return $this->getPath() . DIRECTORY_SEPARATOR . $path;
-    }
-
-    public function getFileType(array $file)
-    {
-        $filename = array_get($file, 'filename');
-
-        $parts = explode('.', $filename);
-
-        return end($parts);
-    }
-
-    public function getPathForType($type)
-    {
-        return $this->getPath() . DIRECTORY_SEPARATOR . $this->filenames[$type];
-    }
-
-    public function getFromData()
-    {
-        return collect($this->formatFromData());
-    }
-
-    public function getFromFile()
     {
         $filename = $this->convertFrom;
 
-        return collect($this->files)->first(function ($index, $item) use ($filename) {
+        $file = collect($this->files)->first(function ($index, $item) use ($filename) {
             return array_get($item, 'filename') == $filename;
         });
-    }
 
-    public function getFileConvertFromMethod(array $file)
-    {
         $method = array_get($file, 'from_method');
 
         if (is_null($method)) {
@@ -153,72 +52,46 @@ abstract class Converter implements ConverterInterface
             $method = 'from' . studly_case($type);
         }
 
-        return $method;
-    }
+        $data = $this->$method($this->getPath() . DIRECTORY_SEPARATOR . $this->convertFrom);
 
-    public function formatFromData()
-    {
-        $method = $this->getFileConvertFromMethod(
-            $this->getFromFile()
-        );
+        $model = $this->model;
 
-        return $this->$method($this->getFromDataPath());
-    }
+        $data = $data->transform(function(array $data) use ($model) {
+            return new $model($data);
+        });
 
-    public function getFromDataPath()
-    {
-        return $this->getPath() . DIRECTORY_SEPARATOR . $this->convertFrom;
-    }
+        foreach ($this->files as $file) {
+            $method = array_get($file, 'to_method');
 
-    public function getFileContent($path)
-    {
-        return file_get_contents($path);
-    }
-
-    public function fromJson($path)
-    {
-        return json_decode($this->getFileContent($path), true);
-    }
-
-    public function fromPhp($path)
-    {
-        return include($path);
-    }
-
-    public function toPhp(Collection $collection)
-    {
-        return "<?php return " . var_export($collection->toArray(), true) . ";";
-    }
-
-    public function toXml(Collection $collection)
-    {
-        $xml = new \SimpleXMLElement('<?xml version="1.0"?><'.$this->xmlRoot.'></'.$this->xmlRoot.'>');
-
-        $this->toXmlLoop($collection->toArray(), $xml);
-
-        return $xml->asXML();
-    }
-
-    public function toJson(Collection $collection)
-    {
-        return json_encode($collection->toArray());
-    }
-
-    public function toXmlLoop($data, &$xml, $parentKeyName = null) {
-        foreach( $data as $key => $value ) {
-            if( is_array($value) ) {
-                if( is_numeric($key) ){
-                    if (!is_null($parentKeyName)) {
-                        $key = str_singular($parentKeyName);
-                    } else {
-                        $key = str_singular($this->xmlRoot);
-                    }
-                }
-                $subnode = $xml->addChild($key);
-                $this->toXmlLoop($value, $subnode, $key);
-            } else {
-                $xml->addChild("$key",htmlspecialchars("$value"));
+            if (is_null($method)) {
+                $type = collect(explode('.', array_get($file, 'filename')))->last();
+                $method = 'to' . studly_case($type);
             }
+
+            $except = array_get($file, 'except', []);
+
+            if (is_string($except)) {
+                $except = [$except];
+            }
+
+            $indexing = array_get($file, 'index', null);
+
+            $convertedData = $this->$method(
+                !is_null($indexing) ? $data->except($except)->keyBy($indexing) : $data->except($except)
+            );
+
+            if (array_get($file, 'prettify', false)) {
+                $method = array_get($file, 'prettify_method');
+
+                if (is_null($method)) {
+                    $type = collect(explode('.', array_get($file, 'filename')))->last();
+                    $method = 'prettify' . studly_case($type);
+                }
+
+                $convertedData = $this->$method($convertedData);
+            }
+
+            file_put_contents($this->getPath() . DIRECTORY_SEPARATOR . array_get($file, 'filename'), $convertedData);
         }
     }
 }

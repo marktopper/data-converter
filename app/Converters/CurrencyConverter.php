@@ -2,20 +2,21 @@
 
 namespace App\Converters;
 
-use App\Converters\Models\Language;
+use App\Converters\Models\Currency;
 
-class LanguageConverter extends Converter
+class CurrencyConverter extends Converter
 {
-    public $xmlRoot = 'languages';
+    public $xmlRoot = 'currencies';
 
-    public $convertFrom = 'array.php';
+    public $convertFrom = 'array.json';
 
-    public $model = Language::class;
+    protected $model = Currency::class;
 
     public $files = [
         [
             'filename' => 'array.json',
             'prettify' => true,
+            'except' => '*.symbol',
         ],
         [
             'filename' => 'indexedArray.json',
@@ -44,6 +45,6 @@ class LanguageConverter extends Converter
 
     public function getPath()
     {
-        return base_path('repos/languages/src');
+        return base_path('repos/currencies/src');
     }
 }

@@ -7,9 +7,15 @@ use Illuminate\Console\Command;
 
 class Convert extends Command
 {
+    /**
+     * Converters to run.
+     *
+     * @var array
+     */
     protected $converters = [
         Converters\LanguageConverter::class,
         Converters\CountryConverter::class,
+        Converters\CurrencyConverter::class,
     ];
 
     /**
